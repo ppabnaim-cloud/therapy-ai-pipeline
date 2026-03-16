@@ -94,7 +94,7 @@ st.markdown("""
 <div style='background: linear-gradient(135deg, #1a1a2e, #0f3460);
      padding: 22px 20px; border-radius: 14px; margin-bottom: 16px;'>
     <h1 style='color: #ffffff; margin: 0; font-size: 1.35em; font-weight: 700;'>
-        🧠 AI Assistant for Therapist<br>Clerking, Transcribing & Analysis
+        🧠 TherapyAI — Automated Clerking,<br>Transcription & Risk Stratification
     </h1>
     <p style='color: #a0c4ff; margin: 8px 0 0 0; font-size: 0.85em;'>
         by <strong>Dr Naim AI Team</strong> ·
