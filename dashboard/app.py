@@ -73,7 +73,7 @@ st.markdown("""
     </h1>
     <p style='color: #a0c4ff; margin: 8px 0 0 0; font-size: 0.85em;'>
         by <strong>Dr Naim AI Team</strong> ·
-        Hospital Tunku Ampuan Najihah (HTPN)
+        Hospital Tengku Permaisuri Norashikin (HTPN)
     </p>
 </div>
 """, unsafe_allow_html=True)
