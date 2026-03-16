@@ -8,21 +8,74 @@ from dotenv import load_dotenv
 from datetime import datetime
 from docx import Document
 
-load_dotenv()
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+# ── API Setup ─────────────────────────────────────────────────────
+try:
+    ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
+except:
+    load_dotenv()
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+
+client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 MODEL = "claude-sonnet-4-20250514"
 
+# ── Page Config ───────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Therapy AI Dashboard",
+    page_title="TherapyAI — Dr Naim AI Team HTPN",
     page_icon="🧠",
     layout="wide"
 )
 
-st.title("🧠 Talking Therapy — AI Clinician Dashboard")
-st.caption("AI-assisted session analysis | Human-in-the-Loop verification required")
+# ── Visitor Counter ───────────────────────────────────────────────
+if "visitor_count" not in st.session_state:
+    st.session_state.visitor_count = 0
+if "ai_count" not in st.session_state:
+    st.session_state.ai_count = 0
+if "visited" not in st.session_state:
+    st.session_state.visited = False
 
-# ── Sidebar ──────────────────────────────────────────────────────
+if not st.session_state.visited:
+    st.session_state.visitor_count += 1
+    st.session_state.visited = True
+
+# ── Header ────────────────────────────────────────────────────────
+st.markdown("""
+<div style='background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+     padding: 28px 32px; border-radius: 14px; margin-bottom: 20px;'>
+    <h1 style='color: #e0e0e0; font-size: 1.7em; margin: 0; font-weight: 700;'>
+        🧠 AI Assistant for Therapist Clerking, Transcribing & Analysis
+    </h1>
+    <p style='color: #a0c4ff; margin: 6px 0 0 0; font-size: 0.95em;'>
+        by <strong>Dr Naim AI Team</strong> · Hospital Tunku Ampuan Najihah (HTPN)
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+# ── Visitor Stats Bar ─────────────────────────────────────────────
+c1, c2, c3 = st.columns(3)
+c1.metric("👥 Dashboard Visitors", st.session_state.visitor_count)
+c2.metric("🤖 AI Analyses Run",    st.session_state.ai_count)
+c3.metric("📅 Today",              datetime.now().strftime("%d %b %Y"))
+
+# ── Disclaimer ────────────────────────────────────────────────────
+st.warning("""
+⚠️ **Disclaimer:** This application is designed for the automation of the therapy
+clerking process and one-time session analysis using AI. As administrators, **we do
+not store any patient records**. Audio files are deleted immediately after
+transcription. Only anonymised feedback notes are retained for quality improvement
+purposes. All AI-generated outputs require clinician review and sign-off before
+use in any clinical record. This tool does not replace clinical judgement.
+""")
+
+st.divider()
+
+# ── Sidebar ───────────────────────────────────────────────────────
 with st.sidebar:
+    st.image("https://via.placeholder.com/240x60/0f3460/a0c4ff?text=Dr+Naim+AI+Team+HTPN",
+             use_column_width=True)
+    st.markdown("### 🧠 TherapyAI")
+    st.caption("Clerking · Transcribing · Analysis")
+    st.divider()
+
     st.header("Patient Details")
     patient_id   = st.text_input("Patient ID",   value="PT001")
     therapist_id = st.text_input("Therapist ID", value="TH001")
@@ -39,36 +92,30 @@ with st.sidebar:
     transcript_text = ""
 
     if input_method == "📁 Upload Audio File":
-        st.info("Supports: .ogg, .wav, .mp3, .m4a, .mp4")
+        st.info("Supports: .ogg  .wav  .mp3  .m4a  .mp4")
         audio_file = st.file_uploader(
             "Upload session recording",
-            type=["ogg", "wav", "mp3", "m4a", "mp4"]
+            type=["ogg","wav","mp3","m4a","mp4"]
         )
         if audio_file is not None:
-            with st.spinner("🎙️ Transcribing audio with Whisper..."):
-                # Save to temp file
+            with st.spinner("🎙️ Transcribing with Whisper (English)..."):
                 suffix = "." + audio_file.name.split(".")[-1]
                 with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                     tmp.write(audio_file.read())
                     tmp_path = tmp.name
-
-                # Transcribe
-                model_whisper = whisper.load_model("base")
-                result = model_whisper.transcribe(tmp_path, language='en')
+                model_w = whisper.load_model("base")
+                result  = model_w.transcribe(tmp_path, language="en")
                 transcript_text = result["text"]
                 os.unlink(tmp_path)
-
-                # Save transcript
                 os.makedirs("outputs/transcripts", exist_ok=True)
                 fname = f"outputs/transcripts/{patient_id}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
-                with open(fname, "w") as f:
+                with open(fname,"w") as f:
                     f.write(transcript_text)
-
             st.success("✅ Transcription complete")
-            st.text_area("Transcribed text (editable)", value=transcript_text,
-                        height=200, key="transcribed")
-            transcript_text = st.session_state.get("transcribed", transcript_text)
-
+            transcript_text = st.text_area(
+                "Transcribed text (editable)",
+                value=transcript_text, height=200
+            )
     else:
         transcript_text = st.text_area(
             "Paste transcript here",
@@ -79,12 +126,11 @@ with st.sidebar:
     st.divider()
     run_btn = st.button("▶ Run AI Analysis", type="primary", use_container_width=True)
 
-# ── Run Pipeline ─────────────────────────────────────────────────
+# ── Helper Functions ──────────────────────────────────────────────
 def run_claude(prompt, max_tokens=2000):
     r = client.messages.create(
-        model=MODEL,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}]
+        model=MODEL, max_tokens=max_tokens,
+        messages=[{"role":"user","content":prompt}]
     )
     return r.content[0].text
 
@@ -92,16 +138,15 @@ def parse_json(text):
     clean = text.replace("```json","").replace("```","").strip()
     return json.loads(clean)
 
+# ── AI Pipeline ───────────────────────────────────────────────────
 if run_btn and transcript_text:
+    st.session_state.ai_count += 1
     date_str = datetime.now().strftime("%Y-%m-%d")
-
-    col_prog, _ = st.columns([3,1])
     progress = st.progress(0, text="Starting AI pipeline...")
 
-    # Stage 1
     progress.progress(10, text="Stage 1 — Thematic analysis...")
     analysis = parse_json(run_claude("""
-Analyse this therapy session. Transcript may be in Bahasa Malaysia or English.
+Analyse this therapy session. Transcript may be in English or Bahasa Malaysia.
 Return ONLY valid JSON:
 {
   "presenting_themes": [],
@@ -119,12 +164,11 @@ Return ONLY valid JSON:
 }
 TRANSCRIPT: """ + transcript_text))
 
-    # Stage 2
     progress.progress(30, text="Stage 2 — Generating clinical note...")
     note_text = run_claude(f"""
-Generate structured clinical note for EMR copy-paste. Output in English.
+Generate structured clinical note for EMR. Output in English.
 DATE: {date_str} | PATIENT: {patient_id} | THERAPIST: {therapist_id} | SESSION: {session_num}
-Sections required:
+Sections:
 PRESENTING COMPLAINT:
 MENTAL STATE EXAMINATION:
   Appearance and Behaviour:
@@ -150,11 +194,9 @@ CLINICIAN SIGNATURE: _________________ DATE: _________________
 TRANSCRIPT: {transcript_text[:2000]}
 ANALYSIS: {json.dumps(analysis)}""")
 
-    # Stage 3
     progress.progress(50, text="Stage 3 — ICD-11 / DSM-5 coding...")
     codes = parse_json(run_claude("""
-Suggest diagnostic codes based on this analysis.
-Return ONLY valid JSON:
+Suggest diagnostic codes. Return ONLY valid JSON:
 {
   "icd11_primary": {"code": "", "description": ""},
   "icd11_secondary": [],
@@ -166,11 +208,9 @@ Return ONLY valid JSON:
 }
 ANALYSIS: """ + json.dumps(analysis), max_tokens=1000))
 
-    # Stage 4
-    progress.progress(70, text="Stage 4 — Generating recommendations...")
+    progress.progress(70, text="Stage 4 — Recommendations...")
     rec = parse_json(run_claude("""
-Provide clinical supervision recommendations.
-Return ONLY valid JSON:
+Provide clinical supervision recommendations. Return ONLY valid JSON:
 {
   "guided_questions_next_session": [],
   "therapy_technique_suggestions": [],
@@ -183,11 +223,9 @@ Return ONLY valid JSON:
 }
 ANALYSIS: """ + json.dumps(analysis), max_tokens=1000))
 
-    # Stage 5
     progress.progress(90, text="Stage 5 — Medicolegal audit...")
     audit = parse_json(run_claude("""
-Audit this clinical note for medicolegal adequacy.
-Return ONLY valid JSON:
+Audit this clinical note for medicolegal adequacy. Return ONLY valid JSON:
 {
   "consent_documented": false,
   "risk_assessment_complete": false,
@@ -206,22 +244,20 @@ NOTE: """ + note_text[:1000], max_tokens=1000))
 
     # ── Metrics ───────────────────────────────────────────────────
     st.divider()
-    m1, m2, m3, m4, m5 = st.columns(5)
+    m1,m2,m3,m4,m5 = st.columns(5)
     m1.metric("Session Quality",      f"{analysis.get('session_quality_score')}/10")
     m2.metric("Therapeutic Alliance", f"{analysis.get('therapeutic_alliance')}/5")
     m3.metric("Patient Engagement",   f"{analysis.get('patient_engagement')}/5")
     m4.metric("Medicolegal Risk",      audit.get('medicolegal_risk_level','—').upper())
     m5.metric("Escalation",           "⚠️ YES" if rec.get('escalation_required') else "✅ NO")
 
-    # ── Risk Alert ────────────────────────────────────────────────
-    st.divider()
     if analysis.get("risk_flags"):
-        st.error(f"🚨 Risk Flags Identified: {' · '.join(analysis['risk_flags'])}")
+        st.error(f"🚨 Risk Flags: {' · '.join(analysis['risk_flags'])}")
     else:
         st.success("✅ No risk flags identified")
 
-    # ── Tabs ──────────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    # ── Output Tabs ───────────────────────────────────────────────
+    tab1,tab2,tab3,tab4,tab5 = st.tabs([
         "📋 Thematic Analysis",
         "📄 Clinical Note",
         "🏷️ ICD-11 / DSM-5",
@@ -230,23 +266,19 @@ NOTE: """ + note_text[:1000], max_tokens=1000))
     ])
 
     with tab1:
-        col1, col2 = st.columns(2)
+        col1,col2 = st.columns(2)
         with col1:
             st.subheader("Presenting Themes")
-            for t in analysis.get("presenting_themes", []):
-                st.write(f"• {t}")
+            for t in analysis.get("presenting_themes",[]): st.write(f"• {t}")
             st.subheader("Cognitive Distortions")
-            for c in analysis.get("cognitive_distortions", []):
-                st.write(f"• {c}")
+            for c in analysis.get("cognitive_distortions",[]): st.write(f"• {c}")
             st.subheader("Disclosure Depth")
             st.write(analysis.get("disclosure_depth","—"))
         with col2:
-            st.subheader("Therapist Techniques Observed")
-            for t in analysis.get("therapist_technique", []):
-                st.write(f"• {t}")
+            st.subheader("Therapist Techniques")
+            for t in analysis.get("therapist_technique",[]): st.write(f"• {t}")
             st.subheader("Key Patient Quotes")
-            for q in analysis.get("key_patient_quotes", []):
-                st.info(f'"{q}"')
+            for q in analysis.get("key_patient_quotes",[]): st.info(f'"{q}"')
         st.subheader("Session Summary")
         st.write(analysis.get("summary","—"))
 
@@ -258,8 +290,7 @@ NOTE: """ + note_text[:1000], max_tokens=1000))
             os.makedirs("outputs/clinical_notes", exist_ok=True)
             doc = Document()
             doc.add_heading("Clinical Session Note — CONFIDENTIAL", 0)
-            for line in edited_note.split("\n"):
-                doc.add_paragraph(line)
+            for line in edited_note.split("\n"): doc.add_paragraph(line)
             fp = f"outputs/clinical_notes/{patient_id}_{date_str}_session{session_num}.docx"
             doc.save(fp)
             st.success(f"✅ Saved: {fp}")
@@ -267,49 +298,39 @@ NOTE: """ + note_text[:1000], max_tokens=1000))
     with tab3:
         st.subheader("Suggested Diagnostic Codes")
         st.warning("⚠️ AI-suggested only — clinician must confirm before filing")
-        col1, col2 = st.columns(2)
+        col1,col2 = st.columns(2)
         with col1:
+            icd = codes.get("icd11_primary",{})
             st.write("**ICD-11 Primary**")
-            icd = codes.get("icd11_primary", {})
             st.code(f"{icd.get('code','—')}  {icd.get('description','—')}")
-            st.write("**ICD-11 Secondary**")
-            for s in codes.get("icd11_secondary", []):
-                st.write(f"• {s}")
+            for s in codes.get("icd11_secondary",[]): st.write(f"• {s}")
         with col2:
+            dsm = codes.get("dsm5_primary",{})
             st.write("**DSM-5 Primary**")
-            dsm = codes.get("dsm5_primary", {})
             st.code(f"{dsm.get('code','—')}  {dsm.get('description','—')}")
-            st.write("**DSM-5 Differential**")
-            for d in codes.get("dsm5_differential", []):
-                st.write(f"• {d}")
+            for d in codes.get("dsm5_differential",[]): st.write(f"• {d}")
         st.write(f"**Confidence:** {codes.get('coding_confidence','—')}")
         st.write(f"**Notes:** {codes.get('coding_notes','—')}")
         if codes.get("suggested_assessments"):
             st.write("**Suggested Assessments:**")
-            for a in codes["suggested_assessments"]:
-                st.write(f"• {a}")
+            for a in codes["suggested_assessments"]: st.write(f"• {a}")
 
     with tab4:
         st.subheader("Clinical Supervision Recommendations")
         st.write("**Guided Questions for Next Session:**")
-        for q in rec.get("guided_questions_next_session", []):
-            st.write(f"• {q}")
-        st.write("**Therapy Technique Suggestions:**")
-        for t in rec.get("therapy_technique_suggestions", []):
-            st.write(f"• {t}")
-        st.write("**Therapy Modality Adjustment:**")
+        for q in rec.get("guided_questions_next_session",[]): st.write(f"• {q}")
+        st.write("**Technique Suggestions:**")
+        for t in rec.get("therapy_technique_suggestions",[]): st.write(f"• {t}")
+        st.write("**Modality Adjustment:**")
         st.write(rec.get("therapy_modality_adjustment","—"))
         st.write("**Homework Suggestions:**")
-        for h in rec.get("homework_suggestions", []):
-            st.write(f"• {h}")
-        st.write("**Overall Recommendation:**")
+        for h in rec.get("homework_suggestions",[]): st.write(f"• {h}")
         st.info(rec.get("overall_recommendation","—"))
         if rec.get("escalation_required"):
-            st.error(f"🚨 Escalation Required: {rec.get('escalation_reason','—')}")
+            st.error(f"🚨 Escalation: {rec.get('escalation_reason','—')}")
 
     with tab5:
-        st.subheader("Medicolegal Documentation Audit")
-        col1, col2 = st.columns(2)
+        col1,col2 = st.columns(2)
         with col1:
             st.write(f"Consent documented: `{audit.get('consent_documented')}`")
             st.write(f"Risk assessment complete: `{audit.get('risk_assessment_complete')}`")
@@ -321,29 +342,92 @@ NOTE: """ + note_text[:1000], max_tokens=1000))
             st.write(f"**Medicolegal risk:** `{audit.get('medicolegal_risk_level')}`")
         if audit.get("flags"):
             st.warning("**Documentation Gaps:**")
-            for f in audit["flags"]:
-                st.write(f"• {f}")
+            for f in audit["flags"]: st.write(f"• {f}")
         if audit.get("recommended_actions"):
             st.write("**Recommended Actions:**")
-            for a in audit["recommended_actions"]:
-                st.write(f"• {a}")
+            for a in audit["recommended_actions"]: st.write(f"• {a}")
 
     # ── HITL Sign-off ─────────────────────────────────────────────
     st.divider()
     st.subheader("⚕️ Human-in-the-Loop Clinician Sign-off")
     st.warning("All AI outputs require clinician review and approval before filing.")
-    col1, col2 = st.columns(2)
+    col1,col2 = st.columns(2)
     with col1:
         clinician_name = st.text_input("Clinician Name")
         designation    = st.text_input("Designation / MMC Number")
     with col2:
         sign_date = st.date_input("Date of Review")
-        approved  = st.checkbox("I have reviewed all AI outputs and approve filing in HIS/EMR")
+        approved  = st.checkbox("I have reviewed all AI outputs and approve filing")
     if approved and clinician_name:
         st.success(f"✅ Approved by {clinician_name} ({designation}) on {sign_date}")
         st.balloons()
 
 elif run_btn and not transcript_text:
-    st.warning("Please upload an audio file or paste a transcript before running.")
+    st.warning("Please upload audio or paste a transcript first.")
 else:
-    st.info("👈 Upload audio or paste transcript in the sidebar, then click Run AI Analysis.")
+    st.info("👈 Enter patient details and upload audio or paste transcript, then click Run AI Analysis.")
+
+# ── Feedback Form ─────────────────────────────────────────────────
+st.divider()
+st.subheader("📝 Feedback — Validity & Feasibility")
+st.caption("Your feedback helps improve this tool. No patient data is collected here.")
+
+with st.form("feedback_form"):
+    col1,col2 = st.columns(2)
+    with col1:
+        fb_name       = st.text_input("Your Name (optional)")
+        fb_role       = st.selectbox("Role", [
+            "Psychiatrist", "Clinical Psychologist", "Counsellor",
+            "Medical Officer", "Nurse", "Other"
+        ])
+        fb_validity   = st.slider(
+            "How valid are the AI-generated clinical outputs? (1 = not valid, 5 = highly valid)",
+            1, 5, 3
+        )
+        fb_feasibility = st.slider(
+            "How feasible is this tool in your clinical setting? (1 = not feasible, 5 = highly feasible)",
+            1, 5, 3
+        )
+    with col2:
+        fb_useful     = st.multiselect("Which features did you find most useful?", [
+            "Audio transcription",
+            "Thematic analysis",
+            "Clinical note generation",
+            "ICD-11 / DSM-5 coding",
+            "Clinical recommendations",
+            "Medicolegal audit",
+            "Human-in-the-loop sign-off"
+        ])
+        fb_improve    = st.text_area("Suggestions for improvement", height=120,
+                                     placeholder="What would make this tool better for your practice?")
+        fb_comments   = st.text_area("General comments", height=80)
+
+    submitted = st.form_submit_button("📨 Submit Feedback", use_container_width=True)
+
+    if submitted:
+        os.makedirs("outputs/feedback", exist_ok=True)
+        feedback_entry = {
+            "timestamp":    datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "name":         fb_name,
+            "role":         fb_role,
+            "validity":     fb_validity,
+            "feasibility":  fb_feasibility,
+            "useful_features": fb_useful,
+            "improvements": fb_improve,
+            "comments":     fb_comments
+        }
+        fname = f"outputs/feedback/feedback_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(fname, "w") as f:
+            json.dump(feedback_entry, f, indent=2)
+        st.success("✅ Thank you. Feedback submitted and saved.")
+
+# ── Footer ────────────────────────────────────────────────────────
+st.divider()
+st.markdown("""
+<div style='text-align:center; color:#888; font-size:0.8em; padding:10px;'>
+    🧠 <strong>TherapyAI</strong> · AI Assistant for Therapist Clerking, Transcribing & Analysis<br>
+    Dr Naim AI Team · Hospital Tunku Ampuan Najihah (HTPN) · 2026<br>
+    <em>This tool is for clinical automation support only. It does not store patient records.
+    All outputs require clinician verification before use.</em>
+</div>
+""", unsafe_allow_html=True)
