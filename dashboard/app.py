@@ -9,14 +9,39 @@ from datetime import datetime
 from docx import Document
 
 # ── API Setup ─────────────────────────────────────────────────────
-try:
+cat > /tmp/fix_api.py << 'EOF'
+import re
+
+with open('dashboard/app.py', 'r') as f:
+    content = f.read()
+
+old = """try:
     ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
 except:
     load_dotenv()
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")"""
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-MODEL = "claude-sonnet-4-20250514"
+new = """try:
+    ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
+except Exception:
+    try:
+        load_dotenv()
+        ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    except Exception:
+        ANTHROPIC_API_KEY = None
+
+if not ANTHROPIC_API_KEY:
+    st.error("API key not found. Please configure ANTHROPIC_API_KEY in Streamlit secrets.")
+    st.stop()"""
+
+content = content.replace(old, new)
+
+with open('dashboard/app.py', 'w') as f:
+    f.write(content)
+
+print("Done")
+EOF
+python3 /tmp/fix_api.py
 
 # ── Page Config ───────────────────────────────────────────────────
 st.set_page_config(
