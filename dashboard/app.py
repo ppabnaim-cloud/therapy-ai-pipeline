@@ -262,7 +262,15 @@ def run_claude(prompt, max_tokens=2000):
     return r.content[0].text
 
 def parse_json(text):
+    import re
+    # Remove markdown fences
     clean = text.replace("```json","").replace("```","").strip()
+    # Find first { and last } to extract JSON only
+    start = clean.find("{")
+    end   = clean.rfind("}") + 1
+    if start == -1 or end == 0:
+        raise ValueError(f"No JSON found in response: {clean[:200]}")
+    clean = clean[start:end]
     return json.loads(clean)
 
 # Gather all available input sources
