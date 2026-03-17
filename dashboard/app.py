@@ -265,7 +265,15 @@ def parse_json(text):
     clean = text.replace("```json","").replace("```","").strip()
     return json.loads(clean)
 
-if run_btn and (transcript_text or referral_context):
+# Gather all available input sources
+final_transcript = (
+    transcript_text or
+    st.session_state.get("transcript", "") or
+    st.session_state.get("referral_context", "") or
+    referral_context
+)
+
+if run_btn and final_transcript:
     st.session_state.ai_count += 1
     date_str  = session_date.strftime("%Y-%m-%d")
 
@@ -341,7 +349,7 @@ NOTE: """ + note_text[:1000], max_tokens=1000))
     st.success("✅ Analysis complete — review all outputs before filing")
 
 elif run_btn:
-    st.error("Please upload audio, upload an image, or paste a transcript first.")
+    st.error("Please transcribe an audio file, extract an image, or paste a transcript first.")
 
 # ════════════════════════════════════════════════════════════════
 # SECTION 4 — RESULTS
